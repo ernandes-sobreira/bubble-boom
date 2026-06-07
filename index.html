@@ -557,10 +557,18 @@ window.continuarJogo=function(){
 };
 
 // ===== LOOP =====
-let _prev=0;
+let _prev=0,_fpsAcum=0,_fpsFrames=0;
+window._lowPerf=false; // flag de performance baixa
 function loop(ts){
   if(!S.rodando)return;
-  const dt=Math.min((ts-_prev)/16.67,3);_prev=ts;
+  const dt=Math.min((ts-_prev)/16.67,2.5);_prev=ts; // cap em 2.5 (evita saltos grandes)
+  // Detectar performance: mede FPS a cada 60 frames
+  _fpsAcum+=dt;_fpsFrames++;
+  if(_fpsFrames>=60){
+    const fpsEst=60/_fpsAcum; // FPS estimado
+    window._lowPerf=fpsEst<28; // abaixo de 28fps = dispositivo lento
+    _fpsAcum=0;_fpsFrames=0;
+  }
   const f=S.f;
   cx.clearRect(0,0,W,H);
   drawCenario(f);
@@ -584,9 +592,20 @@ function loop(ts){
   const p=S.player;
   if(p.par<=0){
     const dx=S.mx-p.x,dy=S.my-p.y,d=Math.sqrt(dx*dx+dy*dy);
-    const ps=f.playerSpd||1.0;if(d>4){p.vx+=(dx/d)*.9*dt*fatorVel*ps;p.vy+=(dy/d)*.9*dt*fatorVel*ps;}
+    const ps=f.playerSpd||1.0;
+    if(d>2){
+      const acel=2.2*fatorVel*ps; // aceleração maior e constante
+      p.vx+=(dx/d)*acel*dt;
+      p.vy+=(dy/d)*acel*dt;
+      // Clamp de velocidade máxima — evita overshooting em dt alto (celular lento)
+      const spd=Math.sqrt(p.vx*p.vx+p.vy*p.vy);
+      const maxSpd=18*fatorVel*ps;
+      if(spd>maxSpd){p.vx=p.vx/spd*maxSpd;p.vy=p.vy/spd*maxSpd;}
+    }
   }
-  p.vx*=.80;p.vy*=.80;
+  // Fricção frame-rate independente: mesmo comportamento a 20fps ou 60fps
+  const fric=Math.pow(0.75,dt);
+  p.vx*=fric;p.vy*=fric;
   p.x+=p.vx*dt;p.y+=p.vy*dt;
   p.x=Math.max(p.r,Math.min(W-p.r,p.x));
   const sedyAtual=f.ciclo?(S.nivelAgua||SEDY_NORMAL):SEDY;
@@ -800,7 +819,7 @@ function drawCenario(f){
     const pu=.5+Math.sin(Date.now()*.003)*.5;
     cx.fillStyle=`rgba(180,80,20,${.10*pu})`;cx.fillRect(0,SEDY,W,12);
     cx.save();cx.globalAlpha=.25*pu;
-    for(let i=0;i<7;i++){
+    for(let i=0;i<(window._lowPerf?4:7);i++){
       cx.fillStyle='#c8603a';cx.beginPath();
       cx.arc(30+i*50+Math.sin(Date.now()*.002+i)*8,SEDY+4,3,0,Math.PI*2);cx.fill();
     }
@@ -1768,8 +1787,8 @@ function tickZonasDif(f){
     z.vida++;
     z.tWisp++;
 
-    // Emitir novo wisp a cada 8 frames
-    if(z.tWisp>8){
+    // Emitir novo wisp — intervalo maior em dispositivos lentos
+    if(z.tWisp>(window._lowPerf?16:8)){
       z.tWisp=0;
       // Nascem espalhados em torno de yo — difusão ocorre na coluna inteira
       const espY=(z.sedyZ-SUPY)*0.18;
@@ -2220,7 +2239,7 @@ function drawCenarioHipoxia(f){
   const pu=.5+Math.sin(Date.now()*.003)*.5;
   cx.fillStyle=`rgba(200,100,30,${.12*pu})`;cx.fillRect(0,SEDY,W,10);
   cx.save();cx.globalAlpha=.2*pu;
-  for(let i=0;i<7;i++){
+  for(let i=0;i<(window._lowPerf?4:7);i++){
     cx.fillStyle='#d07040';cx.beginPath();
     cx.arc(30+i*50+Math.sin(Date.now()*.002+i)*8,SEDY+4,3,0,Math.PI*2);cx.fill();
   }
